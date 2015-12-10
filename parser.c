@@ -1,3 +1,10 @@
+/* parser.c
+** Searches protocol of the packet that matches given checksum
+** among all packets passed through nDPI
+**
+** Sokolov B.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 
