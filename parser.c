@@ -38,9 +38,11 @@ PRTCL_TYPE main (int argc, char *argv[])
 	checksum_ = atoi(argv[1]);
 
 	struct parser_str *memory_start;
+	
 /** TODO
 	memory_start =
 **/	
+
 	int i = 0;
 
 	for (i = 0;;i++)
