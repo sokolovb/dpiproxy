@@ -16,12 +16,23 @@
 
 #include <assert.h>
 
+//System V IPC
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+
 #ifndef ERR
 	#define ERR 0
 #endif
 
 #define DEF_PF			//TODO
 #define DEF_QN			//TODO
+
+struct shared_memory {
+	key_t shmkey;
+	int shmid;
+	void* shmseg;
+};
 
 int main ()
 {
@@ -51,11 +62,17 @@ struct nfql_msg_packet_hdr* packet_header;
 		return -ERR;
 	}
 	
-	if (nfq_set_mode(queue_handler, NFQNL_COPY_META, 0xffff) < 0) { \
+	if (nfq_set_mode(queue_handler, NFQNL_COPY_META, 0xffff) < 0) {
 //TODO NFQL_COPY_META
 		fprintf(stderr, "can't set packet_copy mode\n");
 		return -ERR;
 	}
+	
+	//shared memory initialization
+	shared_memory* shmem = malloc(sizeof(struct shared_memory), 1);
+	shmem -> key_t = ftok(FILE_PATHNAME, PROJECT_ARG);
+        shmem -> shmid = shnget(shmem -> shmkey, BUFFER_SIZE, IPC_CREAT);
+        shmem -> smseg = shmat(shmem -> shmid, NULL, 0);
 
 //Main body
 	fd = nfq_fd(nfq_handler);
@@ -63,6 +80,8 @@ struct nfql_msg_packet_hdr* packet_header;
 		printf("pkt received\n");
 		nfq_handle_packet(nfq_handler, buf, rv);
 	}
+
+				//TODO	shared memory closing?
 
 	printf("unbinding from queue %d\n", qn);
 	nfq_destroy_queue(queue_handler);
@@ -153,10 +172,31 @@ static int cb (struct nfq_q_handler *qh, struct nfgenmsg *nfmsg,
 {
 	u_int32_t verdict = NF_DROP;
 	u_int32_t id;
+	int protocol;
 
 	printf("entering callback\n");
 	id = printk_pkt(nfa);
-	//TODO Analyzing
-	return nfq_set_verdict(qh, id, verdict, 0, NULL);
+	protocol = queuier_get_packet_protocol();
+	return nfq_set_verdict(qh, id, verdict, sizeof(int), &protocol);
 }
 
+#define FILE_PATHNAME		//TODO
+#define PROJECT_ARG		//TODO
+#define BUFFER_SIZE		//TODO
+static int queuier_get_packet_protocol (short unsigned int packet_checksum, const struct shared_memory* shrmem)
+{
+	if (!shrmem) {
+		fprintf (stderr, "cant get acces to the shared memory segment -
+			 				pointer is NULL");
+		return -ERR;
+	}
+	//TODO set semaphore here
+	int ret = parser_get_packet_protocol_by_checksum(packet_checksum, shrmem);
+	if (ret < 0) {
+		fprintf (stderr, "can't get packet protocol 
+					in queuier_get_packet_protocol()");
+		return -ERR;
+	}
+
+	return ret;	
+}
