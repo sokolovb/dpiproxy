@@ -20,6 +20,7 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/sem.h>
 
 #ifndef ERR
 	#define ERR 0
@@ -183,18 +184,67 @@ static int cb (struct nfq_q_handler *qh, struct nfgenmsg *nfmsg,
 #define FILE_PATHNAME		//TODO
 #define PROJECT_ARG		//TODO
 #define BUFFER_SIZE		//TODO
+#define NUMBER_OF_SEMS		2
+#define SEM_FREE_TO_USE		0
+#define SIZE_SEMOPS_FREE_TO_USE	1
+#define SEM_DATA_READY		1
+#define SIZE_SEMOPS_DATA_READY	1
+#define SEMGET_FLAGS		IPC_CREAT
+#define SEMOPS_FLAGS		0
+#define WAIT_FOR_ZERO		0
+#define TAKE_THIS_SEM		-1
+#define ONLY_ONE_SEMOP		1
 static int queuier_get_packet_protocol (short unsigned int packet_checksum, const struct shared_memory* shrmem)
 {
 	if (!shrmem) {
-		fprintf (stderr, "cant get acces to the shared memory segment -
+		fprintf(stderr, "cant get acces to the shared memory segment -
 			 				pointer is NULL");
 		return -ERR;
 	}
 	//TODO set semaphore here
+	int semid = semget(shrmem -> shmkey, NUMBER_OF_SEMS, SEMGET_FLAGS);
+	if (semid < 0) {
+		fprintf(stderr, "can't get semaphore 
+					in queuier_get_packet_protocol()\n");
+	
+	int i;
+
+	struct sembuf sops_ftu[SIZE_SEMOPS_FREE_TO_USE];/* = malloc(sizeof(sembuf), SIZE_SEMOPS_FREE_TO_USE); /*operations 
+			to be performed on the SEM_FREE_TO_USE semaphore*/
+	for (i=0; i<SIZE_SEMOPS_FREE_TO_USE; i++) {
+		sops_ftu[i].sem_num = SEM_FREE_TO_USE;
+	}
+        //sops_ftu[0].sem_op = WAIT_FOR_ZERO; sops_ftu[0].sem_flg = NO_FLAGS;
+	sops_ftu[0].sem_op = TAKE_THIS_SEM; sops_ftu[0].sem_flg = NO_FLAGS;
+
+	struct sembuf sops_dr[SIZE_SEMOPS_DATA_READY];/* = malloc(sizeof(sembuf), SIZE_SEMOPS_DATA_READY); /*operations 
+			to be performed on the SEM_DATA_READY semaphore*/
+	for (i=0; i<SIZE_SEMOPS_DATA_READY; i++) {
+		sops_dr[i].sem_num = SEM_DATA_READY;
+	}
+	sops_dr[0].sem_op = READ_PACKET; sops_dr[0].sem_flg = IPC_NOWAIT;
+	
+	//unsigned int nsops;
+	int semop_ret;
+	semop_ret = semop(semid, sops_ftu, SIZE_SEMOPS_FREE_TO_USE);
+	if (semop_ret < 0) {
+		fprintf(stderr, "can't wait until shared memory is free to use 
+					in queuir_get_packet_protocol\n");
+		return -ERR;
+	}
+	semop_ret = semop(semid, sops_dr, SIZE_SEMOPS_DATA_READY);
+	if (semop_ret < 0) {
+		fprintf(stderr, "can't read shared memory: nothing to read.
+				I'll try one more time");
+		union semun semval {0, NULL, NULL, NULL};
+		semctl(semid, SEM_DATA_READY, SETVAL, semval);
+		semop_ret = semop(semid, &sops_ftu[1], ONLY_ONE_OP);
+		semop_ret = semop(semid, sops_dr, SIZE_SEMOPS_DATA_READY); 
+
 	int ret = parser_get_packet_protocol_by_checksum(packet_checksum, shrmem);
 	if (ret < 0) {
-		fprintf (stderr, "can't get packet protocol 
-					in queuier_get_packet_protocol()");
+		fprintf(stderr, "can't get packet protocol 
+					in queuier_get_packet_protocol()\n");
 		return -ERR;
 	}
 
